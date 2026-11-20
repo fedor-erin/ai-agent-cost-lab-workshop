@@ -114,6 +114,8 @@ export function restore(path: string) {
 export interface RunResult {
   usage: Snapshot;
   gatePassed: boolean;
+  /** Agent wall time (process start → exit), set by runCodex. */
+  wallMs?: number;
 }
 
 const ZERO_USAGE: Snapshot = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, totalCost: 0 };
@@ -234,6 +236,11 @@ const CODEX_PRICE: Record<string, { in: number; cachedIn: number; out: number }>
   "gpt-6-sol": { in: 2, cachedIn: 0.2, out: 10 },
   "gpt-6-astra": { in: 10, cachedIn: 1, out: 50 },
   "gpt-5.5": { in: 5, cachedIn: 0.5, out: 30 },
+  // Nebius Token Factory list prices, $/MTok, checked 2026-11-15. Keys are Token Factory model IDs —
+  // confirm them with GET https://api.tokenfactory.nebius.com/v1/models before a run.
+  "zai-org/GLM-5.3-Flash": { in: 0.15, cachedIn: 0.03, out: 0.5 },
+  "MiniMaxAI/MiniMax-M3.1-Flash": { in: 0.15, cachedIn: 0.015, out: 0.6 },
+  "deepseek-ai/DeepSeek-V4-Pro": { in: 1.75, cachedIn: 0.14, out: 3.5 },
 };
 
 interface CodexUsage { input_tokens?: number; cached_input_tokens?: number; output_tokens?: number }
@@ -458,10 +465,19 @@ export function parseClaudeSession(appDir: string, sessionId: string, sinceMs: n
  * Run `codex exec --json <prompt>` non-interactively and parse usage.
  * Used by e2e tests — not by workshop runner (which uses interactive + parseCodexLogs).
  */
-export function runCodex(prompt: string): Promise<RunResult> {
+export interface CodexRunOptions {
+  /** `-m <model>`; also picks the CODEX_PRICE row. Default: the configured Codex model. */
+  model?: string;
+  /** Extra `codex exec` args, e.g. the Token Factory provider overrides in e2e/bench.ts. */
+  args?: string[];
+}
+
+export function runCodex(prompt: string, opts: CodexRunOptions = {}): Promise<RunResult> {
   console.log(`\n  → codex exec --json (this may take 1–2 minutes)…\n`);
+  const started = Date.now();
+  const args = ["exec", "--json", "--dangerously-bypass-hook-trust", ...(opts.model ? ["-m", opts.model] : []), ...(opts.args ?? []), prompt];
   return new Promise((resolve) => {
-    const child = spawn("codex", ["exec", "--json", "--dangerously-bypass-hook-trust", prompt], {
+    const child = spawn("codex", args, {
       cwd: join(REPO_ROOT, "apps", "angular-demo"), stdio: ["ignore", "pipe", "pipe"], env: { ...process.env },
     });
     let stdout = "";
@@ -472,14 +488,15 @@ export function runCodex(prompt: string): Promise<RunResult> {
     });
     child.on("close", (code) => {
       if (code !== 0) console.error(`\n  ✗ codex exited with code ${code}`);
-      const model = codexModel();
+      const wallMs = Date.now() - started;
+      const model = opts.model ?? codexModel();
       let totalInput = 0, totalOutput = 0, totalCached = 0, totalCost = 0;
       try { for (const line of stdout.trim().split("\n")) { try { const u = extractCodexUsage(JSON.parse(line)); if (u) { totalInput += u.input_tokens ?? 0; totalOutput += u.output_tokens ?? 0; totalCached += u.cached_input_tokens ?? 0; totalCost += codexCost(model, u); } } catch {} } } catch {}
       const nonCachedInput = Math.max(0, totalInput - totalCached);
       const totalTokens = nonCachedInput + totalOutput + totalCached;
       console.log(`\n  📊 Codex: ${nonCachedInput} in + ${totalOutput} out + cache r=${totalCached} = ${totalTokens} total ($${totalCost.toFixed(4)})`);
       const gatePassed = verify();
-      resolve({ usage: { inputTokens: nonCachedInput, outputTokens: totalOutput, cacheReadTokens: totalCached, cacheCreationTokens: 0, totalTokens, totalCost }, gatePassed });
+      resolve({ usage: { inputTokens: nonCachedInput, outputTokens: totalOutput, cacheReadTokens: totalCached, cacheCreationTokens: 0, totalTokens, totalCost }, gatePassed, wallMs });
     });
     setTimeout(() => { child.kill(); resolve({ usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, totalCost: 0 }, gatePassed: false }); }, 600_000);
   });
