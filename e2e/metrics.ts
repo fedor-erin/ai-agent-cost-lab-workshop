@@ -30,6 +30,7 @@ export interface WorkshopMetric {
   provider?: string;      // "openai" | "tokenfactory" (e2e/bench.ts)
   attempt?: number;       // attempt number within a bench cell
   wallMs?: number;        // agent wall time
+  timedOut?: boolean;     // stopped at the bench time limit (e2e/bench.ts)
 }
 
 export function recordWorkshopMetric(m: WorkshopMetric): void {

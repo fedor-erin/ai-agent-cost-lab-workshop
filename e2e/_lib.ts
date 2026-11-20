@@ -116,6 +116,8 @@ export interface RunResult {
   gatePassed: boolean;
   /** Agent wall time (process start → exit), set by runCodex. */
   wallMs?: number;
+  /** runCodex stopped the agent at its time limit; the gate still graded what it left. */
+  timedOut?: boolean;
 }
 
 const ZERO_USAGE: Snapshot = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, totalCost: 0 };
@@ -470,6 +472,8 @@ export interface CodexRunOptions {
   model?: string;
   /** Extra `codex exec` args, e.g. the Token Factory provider overrides in e2e/bench.ts. */
   args?: string[];
+  /** Stop the agent after this long, then grade what it left. Default 10 min. */
+  timeoutMs?: number;
 }
 
 export function runCodex(prompt: string, opts: CodexRunOptions = {}): Promise<RunResult> {
@@ -487,6 +491,7 @@ export function runCodex(prompt: string, opts: CodexRunOptions = {}): Promise<Ru
       resolve({ usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, totalCost: 0 }, gatePassed: false });
     });
     child.on("close", (code) => {
+      clearTimeout(timer);
       if (code !== 0) console.error(`\n  ✗ codex exited with code ${code}`);
       const wallMs = Date.now() - started;
       const model = opts.model ?? codexModel();
@@ -496,9 +501,18 @@ export function runCodex(prompt: string, opts: CodexRunOptions = {}): Promise<Ru
       const totalTokens = nonCachedInput + totalOutput + totalCached;
       console.log(`\n  📊 Codex: ${nonCachedInput} in + ${totalOutput} out + cache r=${totalCached} = ${totalTokens} total ($${totalCost.toFixed(4)})`);
       const gatePassed = verify();
-      resolve({ usage: { inputTokens: nonCachedInput, outputTokens: totalOutput, cacheReadTokens: totalCached, cacheCreationTokens: 0, totalTokens, totalCost }, gatePassed, wallMs });
+      resolve({ usage: { inputTokens: nonCachedInput, outputTokens: totalOutput, cacheReadTokens: totalCached, cacheCreationTokens: 0, totalTokens, totalCost }, gatePassed, wallMs, timedOut });
     });
-    setTimeout(() => { child.kill(); resolve({ usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, totalCost: 0 }, gatePassed: false }); }, 600_000);
+    // At the limit, stop the agent; the 'close' handler above still reads usage and runs the gate.
+    const limitMs = opts.timeoutMs ?? 600_000;
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      console.error(`\n  ✗ codex stopped at the ${limitMs / 60_000}-minute limit — grading what it left`);
+      child.kill();
+      // a tool process codex started can keep the pipes open; close them so 'close' still fires
+      setTimeout(() => { child.stdout?.destroy(); child.stderr?.destroy(); }, 5_000).unref();
+    }, limitMs);
   });
 }
 

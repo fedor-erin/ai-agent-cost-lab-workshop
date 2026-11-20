@@ -51,6 +51,8 @@ const conditions = list(flag("conditions") ?? "baseline") as Condition[];
 const attempts = Number(flag("attempts") ?? "1");
 const provider = flag("provider") ?? "tokenfactory";
 const effort = flag("effort");
+// Same limit as the October runs; the gate still grades an agent stopped at the limit.
+const timeoutMin = Number(flag("timeout-min") ?? "20");
 const ping = process.argv.includes("--ping");
 
 function die(msg: string): never {
@@ -61,6 +63,7 @@ function die(msg: string): never {
 if (models.length === 0) die("pass --models <id[,id…]>");
 for (const c of conditions) if (!(c in CONDITIONS)) die(`unknown condition "${c}" (use ${Object.keys(CONDITIONS).join(", ")})`);
 if (!Number.isInteger(attempts) || attempts < 1) die("--attempts must be a positive integer");
+if (!(timeoutMin > 0)) die("--timeout-min must be a positive number");
 if (provider !== "tokenfactory" && provider !== "openai") die('--provider must be "tokenfactory" or "openai"');
 
 try { process.loadEnvFile(join(REPO_ROOT, ".env")); } catch { /* no .env — rely on the shell env */ }
@@ -164,14 +167,14 @@ for (let attempt = 1; attempt <= attempts; attempt++) {
       resetScenario();
       applyLever(condition);
       const since = Date.now();
-      const r = await runCodex(PROMPT, { model, args: codexArgs });
+      const r = await runCodex(PROMPT, { model, args: codexArgs, timeoutMs: timeoutMin * 60_000 });
       // Token Factory runs: count tokens as Token Factory reported them (also covers timed-out runs)
       const tf = relay ? relayUsage(since, model) : undefined;
       if (tf) r.usage = tf;
       rows.push({ model, condition, r });
       recordWorkshopMetric({
         run: CONDITIONS[condition], agent: "codex", user: gitUser(), task: SCENARIO, lever: condition,
-        model, provider, attempt, wallMs: r.wallMs,
+        model, provider, attempt, wallMs: r.wallMs, timedOut: r.timedOut,
         inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens,
         cacheReadTokens: r.usage.cacheReadTokens, cacheWriteTokens: r.usage.cacheCreationTokens,
         totalTokens: r.usage.totalTokens, totalCost: r.usage.totalCost, gatePassed: r.gatePassed,
@@ -192,14 +195,14 @@ const median = (xs: number[]): number => {
   return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
 };
 console.log("\n━━━ SUMMARY ━━━");
-console.log("model | condition | passed | median tokens | median $/run | $/passed run | median wall s");
+console.log("model | condition | passed | timed out | median tokens | median $/run | $/passed run | median wall s");
 for (const model of models) {
   for (const condition of conditions) {
     const rs = rows.filter((x) => x.model === model && x.condition === condition).map((x) => x.r);
     const passed = rs.filter((r) => r.gatePassed).length;
     const cost = rs.reduce((a, r) => a + r.usage.totalCost, 0);
     console.log([
-      model, condition, `${passed}/${rs.length}`,
+      model, condition, `${passed}/${rs.length}`, `${rs.filter((r) => r.timedOut).length}`,
       `${Math.round(median(rs.map((r) => r.usage.totalTokens)) / 1000)}K`,
       `$${median(rs.map((r) => r.usage.totalCost)).toFixed(3)}`,
       passed ? `$${(cost / passed).toFixed(3)}` : "—",

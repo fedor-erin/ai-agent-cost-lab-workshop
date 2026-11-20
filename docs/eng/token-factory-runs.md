@@ -24,7 +24,7 @@ it in its own process for `--provider tokenfactory`; nothing else to run.
 | Usage | Each completed response's `usage` is appended to `.measurements/tf-relay.jsonl` as Token Factory reported it. |
 
 The bench takes a Token Factory attempt's tokens from that log (everything logged since the attempt
-started). This also counts runs that Codex never finished, such as the 10-minute timeout, where
+started). This also counts runs that Codex never finished, such as one stopped at the time limit, where
 Codex itself prints no usage.
 
 Checked with Codex 0.171.0. If a later Codex changes the namespace format, the symptom comes back:
@@ -89,6 +89,10 @@ npm run bench -- --provider openai --models gpt-6.1-sol --effort medium \
 ```
 
 Run sequentially: Token Factory raises rate limits gradually, and parallel runs can hit 429.
+
+Each attempt has a 20-minute limit, as in the October runs (`--timeout-min` changes it). An agent
+stopped at the limit is still graded on what it left, and the record has `timedOut: true`; the
+summary counts these per cell.
 
 Every attempt is appended to `.measurements/metrics.jsonl` with `model`, `provider`, `lever`,
 `attempt`, `wallMs`, tokens by type, cost and the gate result. The bench prints medians at the end.
