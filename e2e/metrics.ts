@@ -26,6 +26,10 @@ export interface WorkshopMetric {
   totalCost: number;
   gatePassed: boolean;
   lever?: string;         // "baseline" | "hygiene" | "proxy" | "hooks" — which Run 3 lever (or stage)
+  model?: string;         // model ID the agent ran (e2e/bench.ts)
+  provider?: string;      // "openai" | "tokenfactory" (e2e/bench.ts)
+  attempt?: number;       // attempt number within a bench cell
+  wallMs?: number;        // agent wall time
 }
 
 export function recordWorkshopMetric(m: WorkshopMetric): void {
