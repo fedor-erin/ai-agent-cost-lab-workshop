@@ -7,6 +7,29 @@ vendor model in the same harness.
 Codex through a custom provider (Responses API, `https://api.tokenfactory.nebius.com/v1`). The vendor
 reference is Codex with Sol 6.1 on the same machine, Codex version and day.
 
+## Why there is a relay
+
+Codex sends each MCP server's tools as one `type: "namespace"` entry (`mcp__jira` with its tools
+inside) and expects tool calls back with a `namespace` field. Token Factory ignores namespace
+entries, so without help the model sees no MCP tools: it can't read the ticket and burns the run
+looking for it. Codex has no setting to send them as plain functions.
+
+`e2e/tf-relay.ts` sits between Codex and Token Factory on `127.0.0.1` (random port). The bench starts
+it in its own process for `--provider tokenfactory`; nothing else to run.
+
+| Direction | What the relay does |
+|---|---|
+| Codex → TF | Every namespace becomes plain function tools named `<namespace>__<tool>` (`mcp__jira__jira_get_issue`). History items with a `namespace` get the same flat name. |
+| TF → Codex | Every `function_call` with such a name gets `namespace` + the original `name` back, in streamed (SSE) and plain JSON responses. |
+| Usage | Each completed response's `usage` is appended to `.measurements/tf-relay.jsonl` as Token Factory reported it. |
+
+The bench takes a Token Factory attempt's tokens from that log (everything logged since the attempt
+started). This also counts runs that Codex never finished, such as the 10-minute timeout, where
+Codex itself prints no usage.
+
+Checked with Codex 0.171.0. If a later Codex changes the namespace format, the symptom comes back:
+the model has no `jira_*` tools and calls `list_mcp_resources` instead.
+
 Conditions: `baseline`, `hygiene`, `proxy`. There is no `hooks` condition — the Codex MCP hook never
 fired in the October runs.
 
@@ -43,8 +66,10 @@ npm run bench -- --ping --models zai-org/GLM-5.3-Flash      # one tiny request: 
 npm run bench -- --models zai-org/GLM-5.3-Flash             # one full baseline attempt: MCP, edits, gate
 ```
 
-The full attempt must show a `📊 Codex:` line with non-zero tokens and a gate result. Repeat it for
-each model before the real runs.
+The full attempt must show an `mcp_tool_call` to `jira_get_issue`, a `📊 Codex:` line with non-zero
+tokens and a gate result. Repeat it for each model before the real runs.
+
+`529 System is overloaded` lines from Token Factory are retried by Codex; they don't fail the run.
 
 ## Real runs
 
