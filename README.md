@@ -21,6 +21,7 @@ The reference files are in `docs/eng/`.
 | [MCP proxy implementation guide](docs/eng/mcp-proxy-methods.md) | How to implement the tool-response methods in the proxy, including commands, file locations, and reference code |
 | [Agent hooks implementation guide](docs/eng/hooks-methods.md) | How to implement the methods with agent hooks, including configuration, output formats, and agent-specific limitations |
 | [October 2026 measurements](docs/eng/measurements-2026-10.md) | The measured results, test setup, token and cost breakdowns, and limitations |
+| [Token Factory runs](docs/eng/token-factory-runs.md) | How to run the task on open models served by Nebius Token Factory (Codex CLI) and compare them with a vendor model |
 
 The guides distinguish **measured results**, **calculations**, and **estimates**. Use those labels when comparing methods. A reduction in response size, total tokens, and cost describes three different outcomes.
 
