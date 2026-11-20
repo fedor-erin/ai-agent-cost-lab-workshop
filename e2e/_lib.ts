@@ -243,7 +243,7 @@ const CODEX_PRICE: Record<string, { in: number; cachedIn: number; out: number }>
   "deepseek-ai/DeepSeek-V4-Pro": { in: 1.75, cachedIn: 0.14, out: 3.5 },
 };
 
-interface CodexUsage { input_tokens?: number; cached_input_tokens?: number; output_tokens?: number }
+export interface CodexUsage { input_tokens?: number; cached_input_tokens?: number; output_tokens?: number }
 
 /** Pull the usage block from a codex JSON event across formats (exec stdout / log-dir). */
 function extractCodexUsage(e: any): CodexUsage | null {
@@ -256,7 +256,7 @@ function extractCodexUsage(e: any): CodexUsage | null {
 const warnedCodexModels = new Set<string>();
 
 /** USD cost of one codex usage block. input_tokens includes cached; cached bills cheaper. */
-function codexCost(model: string, u: CodexUsage): number {
+export function codexCost(model: string, u: CodexUsage): number {
   const p = CODEX_PRICE[model];
   if (!p) {
     if (!warnedCodexModels.has(model)) { warnedCodexModels.add(model); console.log(`  ⚠️  no price for codex model "${model}" — cost excludes its tokens`); }
