@@ -6,17 +6,19 @@
  *   npm run bench -- --models a,b,c --conditions baseline,hygiene,proxy --attempts 5
  *   npm run bench -- --provider openai --models gpt-6.1-sol --effort medium   # vendor reference
  *
- * Provider "tokenfactory" (default) points Codex at https://api.tokenfactory.nebius.com/v1 through
- * `-c model_providers...` overrides and reads NEBIUS_API_KEY from .env. Provider "openai" uses your
- * normal Codex login. Order follows the October runs: attempt 1 of every cell, then attempt 2, …
+ * Provider "tokenfactory" (default) starts the local relay (e2e/tf-relay.ts) in this process, points
+ * Codex at it through `-c model_providers...` overrides and reads NEBIUS_API_KEY from .env; the relay
+ * forwards to https://api.tokenfactory.nebius.com/v1. Provider "openai" uses your normal Codex login. Order follows the October runs: attempt 1 of every cell, then attempt 2, …
  * Each attempt is appended to .measurements/metrics.jsonl; a median summary is printed at the end.
  */
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetScenario, runCodex, gitUser, SCENARIO, type RunResult } from "./_lib.js";
+import { promisify } from "node:util";
+import { resetScenario, runCodex, codexCost, gitUser, SCENARIO, type RunResult, type Snapshot } from "./_lib.js";
 import { recordWorkshopMetric } from "./metrics.js";
+import { startRelay } from "./tf-relay.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const APP_DIR = join(REPO_ROOT, "apps", "angular-demo");
@@ -24,10 +26,14 @@ const PROMPT = readFileSync(join(REPO_ROOT, "workshop", "facilitator", "PROMPT.m
 const CONDITIONS = { baseline: 1, hygiene: 2, proxy: 3 } as const;
 type Condition = keyof typeof CONDITIONS;
 
-const TOKEN_FACTORY_ARGS = [
+/** Token Factory usage as the relay saw it in each response (e2e/tf-relay.ts). */
+const RELAY_LOG = join(REPO_ROOT, ".measurements", "tf-relay.jsonl");
+
+/** Codex → local relay → Token Factory. The relay makes MCP tools visible to the model. */
+const tokenFactoryArgs = (relayUrl: string): string[] => [
   "-c", 'model_provider="tokenfactory"',
   "-c", 'model_providers.tokenfactory.name="Nebius Token Factory"',
-  "-c", 'model_providers.tokenfactory.base_url="https://api.tokenfactory.nebius.com/v1"',
+  "-c", `model_providers.tokenfactory.base_url="${relayUrl}"`,
   "-c", 'model_providers.tokenfactory.env_key="NEBIUS_API_KEY"',
   "-c", 'model_providers.tokenfactory.wire_api="responses"',
 ];
@@ -60,21 +66,25 @@ if (provider !== "tokenfactory" && provider !== "openai") die('--provider must b
 try { process.loadEnvFile(join(REPO_ROOT, ".env")); } catch { /* no .env — rely on the shell env */ }
 if (provider === "tokenfactory" && !process.env.NEBIUS_API_KEY) die("NEBIUS_API_KEY is empty — put your key into .env");
 
+const relay = provider === "tokenfactory" ? await startRelay({ usageLog: RELAY_LOG }) : undefined;
 const codexArgs = [
   "-s", "workspace-write",
-  ...(provider === "tokenfactory" ? TOKEN_FACTORY_ARGS : []),
+  ...(relay ? tokenFactoryArgs(relay.url) : []),
   ...(effort ? ["-c", `model_reasoning_effort="${effort}"`] : []),
 ];
 
-// ── ping: one tiny request per model, outside the repo, no MCP ───────────
+// ── ping: one tiny request per model, outside the repo ───────────────────
 
 if (ping) {
   for (const model of models) {
     console.log(`\n━━━ ping ${provider}:${model} ━━━`);
     try {
-      const out = execFileSync("codex", ["exec", "--json", "--skip-git-repo-check", "-m", model, ...codexArgs, "Reply with exactly: PONG"],
+      // async: the relay runs in this process and must keep serving while codex waits on it
+      const call = promisify(execFile)("codex", ["exec", "--json", "--skip-git-repo-check", "-m", model, ...codexArgs, "Reply with exactly: PONG"],
         { cwd: tmpdir(), encoding: "utf8", timeout: 120_000, env: process.env });
-      console.log(out.trim().split("\n").slice(-3).join("\n"));
+      call.child.stdin?.end(); // codex exec reads extra input from stdin until it closes
+      const { stdout } = await call;
+      console.log(stdout.trim().split("\n").slice(-3).join("\n"));
     } catch (err: any) {
       console.error(`  ✗ ${String(err?.stderr || err?.message).slice(0, 2000)}`);
     }
@@ -112,6 +122,28 @@ function cleanApp(): void {
   for (const f of readdirSync(dir)) if (f.startsWith("agent-fix-run") || f.endsWith(".gate.json")) rmSync(join(dir, f));
 }
 
+/** Token Factory usage the relay logged since `sinceMs` — survives a run that codex never finished. */
+function relayUsage(sinceMs: number, model: string): Snapshot | undefined {
+  if (!existsSync(RELAY_LOG)) return undefined;
+  let input = 0, cached = 0, output = 0, n = 0;
+  for (const line of readFileSync(RELAY_LOG, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    const e = JSON.parse(line);
+    if (Date.parse(e.ts) < sinceMs) continue;
+    input += e.usage?.input_tokens ?? 0;
+    cached += e.usage?.input_tokens_details?.cached_tokens ?? 0;
+    output += e.usage?.output_tokens ?? 0;
+    n++;
+  }
+  if (n === 0) return undefined;
+  const nonCached = Math.max(0, input - cached);
+  return {
+    inputTokens: nonCached, outputTokens: output, cacheReadTokens: cached, cacheCreationTokens: 0,
+    totalTokens: nonCached + cached + output,
+    totalCost: codexCost(model, { input_tokens: input, cached_input_tokens: cached, output_tokens: output }),
+  };
+}
+
 // ── runs ───────────────────────────────────────────────────────────────
 
 interface Row { model: string; condition: Condition; r: RunResult }
@@ -125,7 +157,11 @@ for (let attempt = 1; attempt <= attempts; attempt++) {
       cleanApp();
       resetScenario();
       applyLever(condition);
+      const since = Date.now();
       const r = await runCodex(PROMPT, { model, args: codexArgs });
+      // Token Factory runs: count tokens as Token Factory reported them (also covers timed-out runs)
+      const tf = relay ? relayUsage(since, model) : undefined;
+      if (tf) r.usage = tf;
       rows.push({ model, condition, r });
       recordWorkshopMetric({
         run: CONDITIONS[condition], agent: "codex", user: gitUser(), task: SCENARIO, lever: condition,
