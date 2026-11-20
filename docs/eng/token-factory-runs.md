@@ -71,6 +71,11 @@ tokens and a gate result. Repeat it for each model before the real runs.
 
 `529 System is overloaded` lines from Token Factory are retried by Codex; they don't fail the run.
 
+The bench passes `-c projects=…trust_level="trusted"` for the repo and the app. Without it Codex
+ignores `apps/angular-demo/.codex/config.toml` and falls back to the global MCP servers from
+`npm run setup`, which have no auto-approval: every MCP call fails with `MCP tool call requires
+approval, but approval policy is never`, and the proxy condition would not use the proxy.
+
 ## Real runs
 
 ```bash

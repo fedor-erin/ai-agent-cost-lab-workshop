@@ -67,8 +67,14 @@ try { process.loadEnvFile(join(REPO_ROOT, ".env")); } catch { /* no .env — rel
 if (provider === "tokenfactory" && !process.env.NEBIUS_API_KEY) die("NEBIUS_API_KEY is empty — put your key into .env");
 
 const relay = provider === "tokenfactory" ? await startRelay({ usageLog: RELAY_LOG }) : undefined;
+// Codex ignores a project's .codex/config.toml until the project is trusted. Without it the run uses
+// the global MCP servers from `npm run setup`: no auto-approval (every MCP call fails under `exec`)
+// and no proxy URLs for the proxy condition.
+const trustProject = `projects={"${REPO_ROOT}"={trust_level="trusted"},"${APP_DIR}"={trust_level="trusted"}}`;
+
 const codexArgs = [
   "-s", "workspace-write",
+  "-c", trustProject,
   ...(relay ? tokenFactoryArgs(relay.url) : []),
   ...(effort ? ["-c", `model_reasoning_effort="${effort}"`] : []),
 ];
