@@ -238,11 +238,11 @@ const CODEX_PRICE: Record<string, { in: number; cachedIn: number; out: number }>
   "gpt-6-sol": { in: 2, cachedIn: 0.2, out: 10 },
   "gpt-6-astra": { in: 10, cachedIn: 1, out: 50 },
   "gpt-5.5": { in: 5, cachedIn: 0.5, out: 30 },
-  // Nebius Token Factory list prices, $/MTok, checked 2026-11-15. Keys are Token Factory model IDs —
+  // Nebius Token Factory list prices, $/MTok, as of 2026-11-20. Keys are Token Factory model IDs —
   // confirm them with GET https://api.tokenfactory.nebius.com/v1/models before a run.
   "zai-org/GLM-5.3-Flash": { in: 0.15, cachedIn: 0.03, out: 0.5 },
   "MiniMaxAI/MiniMax-M3.1-Flash": { in: 0.15, cachedIn: 0.015, out: 0.6 },
-  "deepseek-ai/DeepSeek-V4-Pro-0813": { in: 1.75, cachedIn: 0.14, out: 3.5 },
+  "deepseek-ai/DeepSeek-V4-Pro-0813": { in: 1.32, cachedIn: 0.04, out: 3.96 },
 };
 
 export interface CodexUsage { input_tokens?: number; cached_input_tokens?: number; output_tokens?: number }
