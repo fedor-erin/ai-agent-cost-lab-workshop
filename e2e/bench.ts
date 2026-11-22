@@ -121,6 +121,19 @@ function applyLever(c: Condition): void {
   if (c === "proxy") npm("proxy:solution");
 }
 
+/** The rebuilt proxy container reports "Started" before it listens. Codex connects to its MCP
+ * servers once, at start-up, and drops any that fail — the agent then sees no MCP tools at all. */
+async function waitForProxy(timeoutMs = 90_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      if ((await fetch("http://localhost:9100/health")).ok) return;
+    } catch { /* not listening yet */ }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  die("MCP proxy on :9100 did not become healthy in 90 s — check: docker compose logs proxy");
+}
+
 /** Same clean-up as workshop-runner: all agent edits in the app, plus the last grade that the
  * testrail/github MCP mocks would report back to the next run. */
 function cleanApp(): void {
@@ -166,6 +179,7 @@ for (let attempt = 1; attempt <= attempts; attempt++) {
       cleanApp();
       resetScenario();
       applyLever(condition);
+      if (condition === "proxy") await waitForProxy();
       const since = Date.now();
       const r = await runCodex(PROMPT, { model, args: codexArgs, timeoutMs: timeoutMin * 60_000 });
       // Token Factory runs: count tokens as Token Factory reported them (also covers timed-out runs)
