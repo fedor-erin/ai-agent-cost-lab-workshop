@@ -242,7 +242,7 @@ const CODEX_PRICE: Record<string, { in: number; cachedIn: number; out: number }>
   // confirm them with GET https://api.tokenfactory.nebius.com/v1/models before a run.
   "zai-org/GLM-5.3-Flash": { in: 0.15, cachedIn: 0.03, out: 0.5 },
   "MiniMaxAI/MiniMax-M3.1-Flash": { in: 0.15, cachedIn: 0.015, out: 0.6 },
-  "deepseek-ai/DeepSeek-V4-Pro": { in: 1.75, cachedIn: 0.14, out: 3.5 },
+  "deepseek-ai/DeepSeek-V4-Pro-0813": { in: 1.75, cachedIn: 0.14, out: 3.5 },
 };
 
 export interface CodexUsage { input_tokens?: number; cached_input_tokens?: number; output_tokens?: number }

@@ -80,7 +80,7 @@ approval, but approval policy is never`, and the proxy condition would not use t
 
 ```bash
 # Token Factory models, 5 attempts per cell
-npm run bench -- --models zai-org/GLM-5.3-Flash,MiniMaxAI/MiniMax-M3.1-Flash,deepseek-ai/DeepSeek-V4-Pro \
+npm run bench -- --models zai-org/GLM-5.3-Flash,MiniMaxAI/MiniMax-M3.1-Flash,deepseek-ai/DeepSeek-V4-Pro-0813 \
   --conditions baseline,hygiene,proxy --attempts 5
 
 # Vendor reference, same harness and day
