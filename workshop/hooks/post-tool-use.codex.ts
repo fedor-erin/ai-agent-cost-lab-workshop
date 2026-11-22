@@ -15,7 +15,7 @@
  *   { tool_name, tool_input, response/result, ... }
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -368,12 +368,20 @@ function replaceWith(text: string) {
   return { continue: false, stopReason: "MCP result compacted", reason: text };
 }
 
+/** Optional measurement log (set by `npm run bench`): one line per MCP result the hook saw. */
+function logFire(tool: string, outcome: string, before?: number, after?: number): void {
+  const file = process.env.WORKSHOP_HOOK_LOG;
+  if (!file) return;
+  try { appendFileSync(file, JSON.stringify({ ts: new Date().toISOString(), tool, outcome, before, after }) + "\n"); } catch { /* never break the hook */ }
+}
+
 function maybeEmitCompacted(event: HookEvent): void {
   const toolName = event.tool_name ?? "";
   if (!toolName.startsWith("mcp__")) return;
 
   const duplicate = duplicateMarker(toolName, event.tool_input, event.session_id);
   if (duplicate !== undefined) {
+    logFire(toolName, "duplicate");
     process.stdout.write(JSON.stringify(replaceWith(duplicate)));
     return;
   }
@@ -386,8 +394,9 @@ function maybeEmitCompacted(event: HookEvent): void {
 
   const before = compactJson(original);
   const after = compactJson(compacted);
-  if (after.length >= before.length) return;
+  if (after.length >= before.length) { logFire(toolName, "kept", before.length, after.length); return; }
 
+  logFire(toolName, "compacted", before.length, after.length);
   process.stdout.write(JSON.stringify(replaceWith(after)));
 }
 

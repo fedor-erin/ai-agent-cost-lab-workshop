@@ -23,7 +23,7 @@ import { startRelay } from "./tf-relay.js";
 const REPO_ROOT = join(import.meta.dirname, "..");
 const APP_DIR = join(REPO_ROOT, "apps", "angular-demo");
 const PROMPT = readFileSync(join(REPO_ROOT, "workshop", "facilitator", "PROMPT.md"), "utf8").trim();
-const CONDITIONS = { baseline: 1, hygiene: 2, proxy: 3 } as const;
+const CONDITIONS = { baseline: 1, hygiene: 2, proxy: 3, hooks: 3 } as const;
 type Condition = keyof typeof CONDITIONS;
 
 /** Token Factory usage as the relay saw it in each response (e2e/tf-relay.ts). */
@@ -130,6 +130,14 @@ function resetLevers(rebuildProxy: boolean): void {
 function applyLever(c: Condition): void {
   if (c === "hygiene") npm("agents:solution");
   if (c === "proxy") npm("proxy:solution");
+  if (c === "hooks") npm("hooks:solution");
+}
+
+// The reference Codex hook appends one line per MCP result it sees, so a run shows whether it fired.
+const HOOK_LOG = join(REPO_ROOT, ".measurements", "codex-hook.jsonl");
+process.env.WORKSHOP_HOOK_LOG = HOOK_LOG;
+function hookFires(): number {
+  return existsSync(HOOK_LOG) ? readFileSync(HOOK_LOG, "utf8").split("\n").filter(Boolean).length : 0;
 }
 
 /** The rebuilt proxy container reports "Started" before it listens. Codex connects to its MCP
@@ -192,10 +200,12 @@ for (let attempt = 1; attempt <= attempts; attempt++) {
       applyLever(condition);
       if (condition === "proxy") await waitForProxy();
       const since = Date.now();
+      const hookFiresBefore = hookFires();
       const r = await runCodex(PROMPT, { model, args: codexArgs, timeoutMs: timeoutMin * 60_000 });
       // Token Factory runs: count tokens as Token Factory reported them (also covers timed-out runs)
       const tf = relay ? relayUsage(since, model) : undefined;
       if (tf) r.usage = tf;
+      if (condition === "hooks") console.log(`  hook fired ${hookFires() - hookFiresBefore}× this attempt (log: ${HOOK_LOG})`);
       rows.push({ model, condition, r });
       recordWorkshopMetric({
         run: CONDITIONS[condition], agent: "codex", user: gitUser(), task: SCENARIO, lever: condition,

@@ -30,8 +30,11 @@ Codex itself prints no usage.
 Checked with Codex 0.171.0. If a later Codex changes the namespace format, the symptom comes back:
 the model has no `jira_*` tools and calls `list_mcp_resources` instead.
 
-Conditions: `baseline`, `hygiene`, `proxy`. There is no `hooks` condition — the Codex MCP hook never
-fired in the October runs.
+Conditions: `baseline`, `hygiene`, `proxy`, `hooks`. In October the Codex MCP hook never fired with
+Sol 6.1: that model calls MCP tools from inside `exec` (code mode), and the hook only sees `exec`.
+Token Factory models call the MCP tools directly, so the hook can fire. bench sets
+`WORKSHOP_HOOK_LOG`, the reference hook writes one line per MCP result to
+`.measurements/codex-hook.jsonl`, and bench prints how many times it fired in each attempt.
 
 ## One-time setup
 
