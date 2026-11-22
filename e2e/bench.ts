@@ -106,7 +106,18 @@ if (ping) {
 if (!existsSync(join(APP_DIR, "TASK.md"))) die("apps/angular-demo/TASK.md missing — run: npm run task -- codex");
 
 function npm(script: string): void {
-  execFileSync("npm", ["run", "--silent", script], { cwd: REPO_ROOT, stdio: "inherit", env: { ...process.env, WORKSHOP_AGENT: "codex" } });
+  // Docker Desktop's API sometimes answers 500 for a while; retry the proxy steps rather than lose the night.
+  const tries = script.startsWith("proxy:") ? 4 : 1;
+  for (let i = 1; ; i++) {
+    try {
+      execFileSync("npm", ["run", "--silent", script], { cwd: REPO_ROOT, stdio: "inherit", env: { ...process.env, WORKSHOP_AGENT: "codex" } });
+      return;
+    } catch (e) {
+      if (i >= tries) throw e;
+      console.log(`  ${script} failed (try ${i}/${tries}) — retrying in 60 s`);
+      execFileSync("sleep", ["60"]);
+    }
+  }
 }
 
 function resetLevers(rebuildProxy: boolean): void {
