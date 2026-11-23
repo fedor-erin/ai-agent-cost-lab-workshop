@@ -487,6 +487,7 @@ export function runCodex(prompt: string, opts: CodexRunOptions = {}): Promise<Ru
     let stdout = "";
     child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); process.stdout.write(`  ${chunk.toString().replace(/\n/g, "\n  ")}`); });
     child.on("error", (err) => {
+      clearTimeout(timer);
       console.error(`  ✗ codex failed: ${err.message}`);
       resolve({ usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, totalCost: 0 }, gatePassed: false });
     });

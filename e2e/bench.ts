@@ -3,12 +3,13 @@
  *
  *   npm run bench -- --ping --models zai-org/GLM-5.3-Flash                    # connectivity only
  *   npm run bench -- --models zai-org/GLM-5.3-Flash                           # 1 baseline attempt (smoke)
- *   npm run bench -- --models a,b,c --conditions baseline,hygiene,proxy --attempts 5
+ *   npm run bench -- --models a,b,c --conditions baseline,hygiene,proxy,hooks --attempts 5
  *   npm run bench -- --provider openai --models gpt-6.1-sol --effort medium   # vendor reference
  *
  * Provider "tokenfactory" (default) starts the local relay (e2e/tf-relay.ts) in this process, points
  * Codex at it through `-c model_providers...` overrides and reads NEBIUS_API_KEY from .env; the relay
- * forwards to https://api.tokenfactory.nebius.com/v1. Provider "openai" uses your normal Codex login. Order follows the October runs: attempt 1 of every cell, then attempt 2, …
+ * forwards to https://api.tokenfactory.nebius.com/v1. Provider "openai" uses your normal Codex login.
+ * Order follows the October runs: attempt 1 of every cell, then attempt 2, …
  * Each attempt is appended to .measurements/metrics.jsonl; a median summary is printed at the end.
  */
 import { execFile, execFileSync } from "node:child_process";
@@ -246,5 +247,5 @@ for (const model of models) {
   }
 }
 
-// runCodex leaves a 10-minute kill timer per run; exit explicitly instead of waiting for it.
+// The relay server keeps the event loop alive; exit explicitly.
 process.exit(0);

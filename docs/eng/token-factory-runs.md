@@ -81,14 +81,21 @@ approval, but approval policy is never`, and the proxy condition would not use t
 
 ## Real runs
 
+The full comparison takes 5–6 hours. `scripts/overnight.sh` runs it unattended with a preflight check,
+resumable steps and a summary at the end; see [overnight-runbook.md](overnight-runbook.md). The same
+runs by hand:
+
 ```bash
 # Token Factory models, 5 attempts per cell
 npm run bench -- --models zai-org/GLM-5.3-Flash,MiniMaxAI/MiniMax-M3.1-Flash,deepseek-ai/DeepSeek-V4-Pro-0813 \
-  --conditions baseline,hygiene,proxy --attempts 5
+  --conditions baseline,hygiene,proxy,hooks --attempts 5
 
-# Vendor reference, same harness and day
+# Vendor reference, same harness and day (no hooks: the hook never fires with Sol 6.1)
 npm run bench -- --provider openai --models gpt-6.1-sol --effort medium \
   --conditions baseline,hygiene,proxy --attempts 3
+
+# Medians, spread checks and cost per passed run over everything recorded
+npx tsx e2e/summarize.ts
 ```
 
 Run sequentially: Token Factory raises rate limits gradually, and parallel runs can hit 429.
@@ -100,3 +107,10 @@ summary counts these per cell.
 Every attempt is appended to `.measurements/metrics.jsonl` with `model`, `provider`, `lever`,
 `attempt`, `wallMs`, tokens by type, cost and the gate result. The bench prints medians at the end.
 Cost per passed run = cost of all attempts ÷ attempts that passed.
+
+Results of the November 2026 runs: [measurements-2026-11-tf.md](measurements-2026-11-tf.md).
+
+**Known issue: Codex apps.** Codex adds tools from the apps connected to your Codex account
+(`codex_apps`, for example `codex_document_control.list_document_sessions`) to every run. GLM-5.3-Flash
+sometimes loops on one of them instead of working on the task (several of its failed November runs).
+Before you measure, turn those apps off for the runs; how depends on your Codex version and account.

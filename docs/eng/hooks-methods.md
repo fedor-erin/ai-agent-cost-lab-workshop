@@ -43,6 +43,9 @@ npm run hooks:reset      # remove the hook, restore the direct MCP connection
 > never matches and the model gets the full response. Turning code mode off
 > (`--disable code_mode_host`) breaks MCP calls ("code-mode host is disabled"). For Codex in Run 3,
 > use the proxy.
+>
+> Open models on Nebius Token Factory call MCP tools directly in Codex, so the same hook fires for
+> them (November 2026, see [measurements-2026-11-tf.md](measurements-2026-11-tf.md)).
 
 ---
 
